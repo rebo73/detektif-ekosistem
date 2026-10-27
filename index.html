@@ -250,7 +250,7 @@
 <script>
 /* ================= KONFIGURASI ================= */
 // ⚠️ GANTI URL INI dengan URL Google Apps Script Anda (lihat FILE 2 di bawah)
-const SCRIPT_URL = "https://script.google.com/macros/s/GANTI_DENGAN_URL_ANDA/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz3790F8CE9iIXnRSPbQyDM4nLtfMeiTpNcOHOfTWlFNnXEFyqmE8liCB76oj5KBN923g/exec";
 
 /* ================= AUDIO (Web Audio API) ================= */
 let audioCtx = null, soundOn = true, bgMusic = null;
@@ -627,16 +627,28 @@ function showResult(){
   document.getElementById('btn-send').textContent = '📤 Kirim Skor ke Guru';
 }
 
-/* ================= KIRIM SKOR KE GOOGLE SHEET ================= */
-async function sendScore(){
-  if(scoreSent){ toast('Skor sudah terkirim!', 'info'); return; }
+/* ================= KIRIM SKOR KE GOOGLE SHEET (METODE IFRAME) ================= */
+function sendScore() {
+  if (scoreSent) { toast('Skor sudah terkirim!', 'info'); return; }
+  
   const btn = document.getElementById('btn-send');
   const status = document.getElementById('send-status');
+  
   btn.disabled = true;
   btn.textContent = '⏳ Mengirim...';
   status.className = 'send-status show loading';
   status.textContent = 'Sedang mengirim skor...';
 
+  // Validasi URL
+  if (SCRIPT_URL.includes('GANTI_DENGAN_URL')) {
+    status.className = 'send-status show no';
+    status.textContent = '❌ URL Google Apps Script belum diatur.';
+    btn.disabled = false;
+    btn.textContent = '📤 Kirim Skor ke Guru';
+    return;
+  }
+
+  // 1. Siapkan parameter
   const params = new URLSearchParams({
     nama: studentName,
     skor: total,
@@ -648,25 +660,38 @@ async function sendScore(){
     waktu: new Date().toLocaleString('id-ID')
   });
 
-  try {
-    // Cek dulu apakah URL sudah dikonfigurasi
-    if(SCRIPT_URL.includes('GANTI_DENGAN_URL')){
-      throw new Error('URL Google Apps Script belum dikonfigurasi oleh guru.');
-    }
-    // Gunakan fetch mode no-cors (Google Apps Script tidak support CORS untuk POST biasa)
-    await fetch(SCRIPT_URL + '?' + params.toString(), { method:'GET', mode:'no-cors' });
+  const finalURL = SCRIPT_URL + '?' + params.toString();
+
+  // 2. Buat iframe tersembunyi untuk mengirim data (Bypass CORS)
+  const iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  iframe.name = 'hidden_sender';
+  document.body.appendChild(iframe);
+
+  // 3. Buat form yang menargetkan iframe
+  const form = document.createElement('form');
+  form.method = 'GET'; // Gunakan GET agar sesuai dengan doGet di Apps Script
+  form.action = finalURL;
+  form.target = 'hidden_sender';
+  document.body.appendChild(form);
+
+  // 4. Kirim form
+  form.submit();
+
+  // 5. Beri jeda sebelum menampilkan pesan sukses (karena kita tidak bisa tahu pasti kapan selesai)
+  setTimeout(() => {
     scoreSent = true;
     status.className = 'send-status show ok';
-    status.textContent = '✅ Skor berhasil dikirim ke guru! Terima kasih, ' + studentName + '.';
+    status.textContent = '✅ Skor sudah dikirim ke guru. (Jika data tidak muncul di Sheet, coba lagi).';
     btn.textContent = '✅ Terkirim';
     sfxCorrect();
-  } catch(err) {
-    status.className = 'send-status show no';
-    status.textContent = '❌ Gagal mengirim: ' + err.message + '\n(Skor tetap tersimpan di layar ini. Screenshot untuk bukti.)';
-    btn.disabled = false;
-    btn.textContent = '📤 Coba Kirim Lagi';
-    sfxWrong();
-  }
+    
+    // Bersihkan elemen sementara
+    setTimeout(() => {
+      if (document.body.contains(form)) document.body.removeChild(form);
+      if (document.body.contains(iframe)) document.body.removeChild(iframe);
+    }, 1000);
+  }, 2000); // Jeda 2 detik
 }
 
 function restart(){
